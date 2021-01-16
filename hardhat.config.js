@@ -23,10 +23,10 @@ module.exports = {
     //   accounts: { mnemonic: ffmnemonic }
     // },
     hardhat: {
-      // forking: {
-      //   url: `https://eth-mainnet.alchemyapi.io/v2/${alchemyProjectId}`,
-      //   blockNumber: 11449150
-      // }
+      forking: {
+        url: `https://eth-mainnet.alchemyapi.io/v2/${alchemyProjectId}`,
+        blockNumber: 11449150
+      }
     },
     kovan: {
       url: `https://kovan.infura.io/v3/${infuraProjectId}`,
