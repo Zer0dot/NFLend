@@ -1,11 +1,11 @@
-require("@nomiclabs/hardhat-waffle");
-require("@nomiclabs/hardhat-etherscan");
+import "@nomiclabs/hardhat-waffle";
+import "@nomiclabs/hardhat-etherscan";
 const { ffmnemonic, alchemyProjectId, etherscanKey, infuraProjectId } = require("./secrets.json"); 
 
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
-module.exports = {
+export default {
   solidity: {
     version: "0.6.12",
     settings: {
