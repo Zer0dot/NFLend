@@ -22,7 +22,7 @@ import { WadRayMath } from './libraries/WadRayMath.sol';
  * @param lender The lender who fulfilled, address(0) if the request is open.
  * @param nft The address of the NFT the borrower is willing to lock.
  * @param nftId The id of the NFT the borrower is willing to lock.
- * @param requestId The borrow request's unique identifier.
+ * @para requestId The borrow request's unique identifier.
  * @param amount The amount the borrower is requesting.
  * @param coupon The yearly amount the borrower must repay in addition to the base rate by endTimeStamp.
  * @param liqThreshold The liquidation threshold after which the collateralized NFT can be claimed.
@@ -32,16 +32,17 @@ import { WadRayMath } from './libraries/WadRayMath.sol';
 struct BorrowRequest {
     //bool open; unnecessary              // Whether the request is open or filled, true if available.
     address currency;           // The currency the borrower wishes to receive from the loan.
+    // uint256 rateMode;           // The Aave interest 
     address borrower;           // The initiator of the borrow request.
     address lender;             // The lender who fulfilled, address(0) if the request is open.
     address nft;                // The address of the NFT the borrower is willing to lock.
     uint256 nftId;              // The NFT id the borrower is willing to lock.
-    uint256 requestId;          // The borrow request's unique identifier.
+    //uint256 requestId;          // The borrow request's unique identifier.
     uint256 amount;             // The amount the borrower is requesting.
     uint256 coupon;             // The yearly amount the borrower must repay in addition to the base rate by endTimeStamp.
     uint256 liqThreshold;       // The liquidation threshold after which the collateralized NFT can be claimed.
     uint256 cancelTimestamp;    // The timestamp after which the borrow request cannot be filled.
-    uint256 repayTimestamp;     
+    uint256 repayTimestamp;     // The timestamp of the latest repayment
     uint256 endTimestamp;       // The ending timestamp by which the borrower must have fully repaid the loan.
 }
 
@@ -64,8 +65,7 @@ struct BorrowRequest {
  * is different than 0. This may not be fool-proof.
  *
  * TODO:
- *      Liquidation function
- *      Add a minimum loan length (Maybe?)
+ *      
  */
 contract LoanManager {
     using Counters for Counters.Counter;
@@ -80,8 +80,8 @@ contract LoanManager {
 
 
     // The below mapping maps NFT addresses and Ids to their associated request Id.
-    // The counter starts at 1, so, if the borrowRequestByNFT is 0, there is no active request.
-    mapping(address => mapping(uint256 => uint256)) public borrowRequestByNFT;
+    // The counter starts at 1, so, if the borrowRequestIdByNft is 0, there is no active request.
+    mapping(address => mapping(uint256 => uint256)) public borrowRequestIdByNft;
     mapping(uint256 => BorrowRequest) public borrowRequestById;
     mapping(uint256 => uint256) private scaledPrincipalById;
 
@@ -93,6 +93,8 @@ contract LoanManager {
     event RequestFulfilled(uint256 id);
 
     event RequestClosed(uint256 id);
+
+    event RequestLiquidated(uint256 id);
 
     modifier unfulfilled(uint256 _id) {
         require(
@@ -106,9 +108,21 @@ contract LoanManager {
     constructor() public {
         requestCount.increment(); // Sets the counter to 1 by default
     }
-
+    /**
+     * @dev This function creates a borrow request.
+     *
+     * @param _currency The reserve currency to request.
+     * @param _nft The address of the NFT to offer as collateral.
+     * @param _nftId The id of the NFT to offer as collateral.
+     * @param _amount The amount to request a loan for.
+     * @param _coupon The yearly amount added to the interest.
+     * @param _liqThreshold The liquidation threshold.
+     * @param _cancelTimestamp The timestamp after which to cancel the request.
+     * @param duration The duration the loan will be valid for.
+     */
     function createBorrowRequest(
         address _currency,
+        //uint256 _rateMode,
         address _nft,
         uint256 _nftId,
         uint256 _amount,
@@ -130,21 +144,22 @@ contract LoanManager {
         require(nftContract.getApproved(_nftId) == address(this), "LoanManager: Not approved");
         require(_endTimestamp >= minimumTimestamp, "LoanManager: Insufficient duration");
         require(
-            borrowRequestByNFT[_nft][_nftId] == 0 ||
-            borrowRequestById[borrowRequestByNFT[_nft][_nftId]].endTimestamp < block.timestamp ||
-            (borrowRequestById[borrowRequestByNFT[_nft][_nftId]].cancelTimestamp < block.timestamp &&
-            borrowRequestById[borrowRequestByNFT[_nft][_nftId]].lender == address(0)),
-            "LoanManager: Request exists"
+            borrowRequestIdByNft[_nft][_nftId] == 0 ||
+            borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].endTimestamp < block.timestamp ||
+            (borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].cancelTimestamp < block.timestamp &&
+            borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].lender == address(0)),
+            "LoanManager: Request with this NFT exists"
         );
 
         BorrowRequest memory request = BorrowRequest({
             //open: true,
             currency: _currency,
+            //rateMode: _rateMode,
             borrower: msg.sender,
             lender: address(0),
             nft: _nft,
             nftId: _nftId,
-            requestId: requestCount.current(),
+            //requestId: requestCount.current(),
             amount: _amount,
             coupon: _coupon,
             liqThreshold: _liqThreshold,
@@ -153,18 +168,21 @@ contract LoanManager {
             endTimestamp: _endTimestamp
         });
 
-        borrowRequestByNFT[_nft][_nftId] = requestCount.current();
+        borrowRequestIdByNft[_nft][_nftId] = requestCount.current();
         borrowRequestById[requestCount.current()] = request;
+        IERC721(_nft).transferFrom(msg.sender, address(this), _nftId);
         //repayTimestamp[requestCount.current()] = block.timestamp;
 
         console.log("Contract Log: Request created with Id:", requestCount.current());
-        emit RequestCreated(requestCount.current());
         requestCount.increment();
+
+        emit RequestCreated(requestCount.current());
     }
 
     function removeRequest(uint256 _id) external unfulfilled(_id) {
         require(borrowRequestById[_id].borrower == msg.sender, "LoanManager: Not the requester");
-        delete(borrowRequestById[_id]);
+        IERC721(borrowRequestById[_id].nft).transferFrom(address(this), msg.sender, borrowRequestById[_id].nftId);
+        closeRequest(_id);
         console.log("Contract Log: Removal succeeded for request with Id:", _id);
     }
 
@@ -177,8 +195,8 @@ contract LoanManager {
         require(borrowIndex != 0, "LoanManager: Invalid reserve");
 
         // Transfer in NFT
-        uint256 _nftId = borrowRequestById[_id].nftId;
-        IERC721(borrowRequestById[_id].nft).transferFrom(_borrower, address(this), _nftId);
+        // uint256 _nftId = borrowRequestById[_id].nftId;
+        // IERC721(borrowRequestById[_id].nft).transferFrom(_borrower, address(this), _nftId);
         LENDING_POOL.borrow(_currency, _amount, 2, REF_CODE, msg.sender);
         IERC20(_currency).safeTransfer(_borrower, _amount);
         uint256 scaledPrincipal = borrowRequestById[_id].amount.rayDiv(borrowIndex);
@@ -205,8 +223,7 @@ contract LoanManager {
         address _lender = borrowRequestById[_id].lender;
         IERC20(_currency).safeTransferFrom(msg.sender, _lender, repayment);
 
-        // This is where the scaled repayment is calculated
-        // First, take care of the coupon
+        // Calculate the new scaled debt balance
         if (!full) {
             uint256 debtRemaining = debt.sub(repayment);
             uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
@@ -217,11 +234,28 @@ contract LoanManager {
             uint256 _nftId = borrowRequestById[_id].nftId;
             address _borrower = borrowRequestById[_id].borrower;
             IERC721(borrowRequestById[_id].nft).transferFrom(address(this), _borrower, _nftId);  
-            delete(borrowRequestById[_id]);
-            delete(scaledPrincipalById[_id]);
+            closeRequest(_id);
 
             emit RequestClosed(_id);
         }
+    }
+
+    function liquidate(uint256 _id) external {
+        address _lender = borrowRequestById[_id].lender;
+        address _nft = borrowRequestById[_id].nft;
+        uint256 _nftId = borrowRequestById[_id].nftId;
+        uint256 _endTimestamp = borrowRequestById[_id].endTimestamp;
+        uint256 _liqThreshold = borrowRequestById[_id].liqThreshold;
+        require(_lender == msg.sender, "LoanManager: Not the lender");
+        require(
+            _endTimestamp < block.timestamp ||
+            getRequestDebtBalance(_id) > _liqThreshold,
+            "LoanManager: Request valid"
+        );
+        IERC721(_nft).transferFrom(address(this), _lender, _nftId);  
+        closeRequest(_id);
+
+        emit RequestLiquidated(_id);
     }
 
     function getTotalRequestCount() external view returns (uint256) {
@@ -237,5 +271,13 @@ contract LoanManager {
         uint256 _coupon = borrowRequestById[_id].coupon;
         uint256 currentCoupon = _coupon.div(ONE_YEAR).mul(block.timestamp.sub(_repayTimestamp));
         return scaledPrincipalById[_id].rayMul(borrowIndex).add(currentCoupon);
+    }
+
+    function closeRequest(uint256 _id) private {
+        address _nft = borrowRequestById[_id].nft;
+        uint256 _nftId = borrowRequestById[_id].nftId;
+        delete(borrowRequestIdByNft[_nft][_nftId]);
+        delete(borrowRequestById[_id]);
+        delete(scaledPrincipalById[_id]);
     }
 }
