@@ -105,7 +105,7 @@ describe("LoanManager persistent instance", function () {
     ///////////////////////////
 
     it("Account 0 should create a borrow request ", async function () {
-        console.log("Gas cost for borrow request creation:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
+        console.log("First borrow request creation gas cost:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -133,7 +133,7 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 0 should remove their borrow request", async function () {
         await expect(loanManager.removeRequest("0")).to.not.be.reverted;
-        console.log("Should be an empty struct:", await loanManager.borrowRequestById("1"));
+        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("1"));
     });
 
     ///////////////////////////
@@ -145,7 +145,7 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 0 should create another, identical borrow request", async function () {
-        console.log("Gas cost for SECOND borrow request creation:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
+        console.log("Second borrow request creation gas cost:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -187,7 +187,7 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 1 should fulfill the recently created request with id 1", async function () {
-        console.log("Gas cost:", ethers.utils.commify((
+        console.log("Fulfill gas cost:", ethers.utils.commify((
             await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("1")
         ).toString()));
         await expect(loanManager.connect(accounts[1]).fulfillRequest("1")).to.not.be.reverted;
@@ -221,6 +221,10 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 0 should repay borrow request with id 1 for 0.5 WETH", async function () {
         console.log("Old debt balance:", (await loanManager.getRequestDebtBalance("1")).toString());
+        console.log("Repayment gas:", ethers.utils.commify((await loanManager.estimateGas.repay(
+            "1",
+            ethers.utils.parseEther("0.5")
+        )).toString()));
         await expect(loanManager.repay(
             "1",
             ethers.utils.parseEther("0.5")
@@ -233,11 +237,15 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 0 should repay the entirety of borrow request with id 1", async function () {
+        console.log("Full repayment gas:", ethers.utils.commify((await loanManager.estimateGas.repay(
+            "1",
+            MAX_UINT256
+        )).toString()));
         await expect(loanManager.repay(
             "1",
             MAX_UINT256
         )).to.not.be.reverted;
-        console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
+        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
     });
 
     it("Account 1 should have > 1 WETH", async function () {
@@ -271,13 +279,13 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 1 should fulfill the recently created request with id 2", async function () {
-        console.log("Gas cost:", ethers.utils.commify((
+        console.log("Fulfill gas cost:", ethers.utils.commify((
             await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("2")
         ).toString()));
         await expect(loanManager.connect(accounts[1]).fulfillRequest("2")).to.not.be.reverted;
     });
 
-    it("Borrow request with id 3 should have higher debt than liq. threshold", async function () {
+    it("Borrow request with id 2 should have higher debt than liq. threshold", async function () {
         await expect(BigNumber.from((await loanManager.borrowRequestById("2")).liqThreshold))
             .to.be.lt(await loanManager.getRequestDebtBalance("2"));
         //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
@@ -292,7 +300,7 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 1 should be able to liquidate request with id 2", async function () {
         await expect(loanManager.connect(accounts[1]).liquidate("2")).to.not.be.reverted;
-        console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
+        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
     });
 
     it("Account 1 should be the owner of NFT with id 0", async function () {
