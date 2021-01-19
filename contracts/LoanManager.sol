@@ -78,10 +78,9 @@ contract LoanManager {
     uint256 constant ONE_YEAR = 31556952;           // One year (365.2425 days)
     uint16 constant REF_CODE = 0;                   // Should be team referral code
 
-
-    // The below mapping maps NFT addresses and Ids to their associated request Id.
-    // The counter starts at 1, so, if the borrowRequestIdByNft is 0, there is no active request.
-    // mapping(address => mapping(uint256 => uint256)) public borrowRequestIdByNft;
+    /**
+     * @dev This is a mapping from borrow request ids to borrow request structs.
+     */
     mapping(uint256 => BorrowRequest) public borrowRequestById;
 
     mapping(uint256 => uint256) private scaledPrincipalById;
@@ -97,6 +96,13 @@ contract LoanManager {
 
     event RequestLiquidated(uint256 id);
 
+    /**
+     * @dev This modifier checks that there is no lender and no repayTimestamp associated
+     * with a given borrow request id. This means the request was never fulfilled.
+     * This does NOT check that the borrow request exists.
+     *
+     * @param _id The id of the borrow request to verify.
+     */
     modifier unfulfilled(uint256 _id) {
         require(
             borrowRequestById[_id].lender == address(0) &&
@@ -106,9 +112,6 @@ contract LoanManager {
         _;
     }
 
-    constructor() public {
-        //requestCount.increment(); // Sets the counter to 1 by default
-    }
     /**
      * @dev This function creates a borrow request.
      *
@@ -123,7 +126,6 @@ contract LoanManager {
      */
     function createBorrowRequest(
         address _currency,
-        //uint256 _rateMode,
         address _nft,
         uint256 _nftId,
         uint256 _amount,
@@ -144,23 +146,13 @@ contract LoanManager {
         require(nftContract.ownerOf(_nftId) == msg.sender, "LoanManager: Not the NFT owner");
         require(nftContract.getApproved(_nftId) == address(this), "LoanManager: Not approved");
         require(_endTimestamp >= minimumTimestamp, "LoanManager: Insufficient duration");
-        // require(
-        //     borrowRequestIdByNft[_nft][_nftId] == 0 ||
-        //     borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].endTimestamp < block.timestamp ||
-        //     (borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].cancelTimestamp < block.timestamp &&
-        //     borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].lender == address(0)),
-        //     "LoanManager: Request with this NFT exists"
-        // );
 
         BorrowRequest memory request = BorrowRequest({
-            //open: true,
             currency: _currency,
-            //rateMode: _rateMode,
             borrower: msg.sender,
             lender: address(0),
             nft: _nft,
             nftId: _nftId,
-            //requestId: requestCount.current(),
             amount: _amount,
             coupon: _coupon,
             liqThreshold: _liqThreshold,
@@ -169,10 +161,8 @@ contract LoanManager {
             endTimestamp: _endTimestamp
         });
 
-        //borrowRequestIdByNft[_nft][_nftId] = requestCount.current();
         borrowRequestById[requestCount.current()] = request;
         IERC721(_nft).transferFrom(msg.sender, address(this), _nftId);
-        //repayTimestamp[requestCount.current()] = block.timestamp;
 
         console.log("Contract Log: Request created with Id:", requestCount.current());
         requestCount.increment();
@@ -180,13 +170,25 @@ contract LoanManager {
         emit RequestCreated(requestCount.current());
     }
 
+    /**
+     * @dev This function removes a currently active, but unfulfilled request. Msg.sender
+     * must be the borrow request creator (borrower).
+     *
+     * @param _id The borrow request id to remove.
+     */
     function removeRequest(uint256 _id) external unfulfilled(_id) {
-        require(borrowRequestById[_id].borrower == msg.sender, "LoanManager: Not the requester");
+        require(borrowRequestById[_id].borrower == msg.sender, "LoanManager: Not the borrower");
         IERC721(borrowRequestById[_id].nft).transferFrom(address(this), msg.sender, borrowRequestById[_id].nftId);
         closeRequest(_id);
         console.log("Contract Log: Removal succeeded for request with Id:", _id);
     }
 
+    /**
+     * @dev This function fulfills an active, unfulfilled borrow request. msg.sender
+     * must have approved the appropriate amount in the right currency.
+     * 
+     * @param _id The id of the borrow request to fulfill.
+     */
     function fulfillRequest(uint256 _id) external unfulfilled(_id) {
         require(borrowRequestById[_id].cancelTimestamp > block.timestamp, "LoanManager: Request expired");
         address _currency = borrowRequestById[_id].currency;
@@ -195,9 +197,6 @@ contract LoanManager {
         uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
         require(borrowIndex != 0, "LoanManager: Invalid reserve");
 
-        // Transfer in NFT
-        // uint256 _nftId = borrowRequestById[_id].nftId;
-        // IERC721(borrowRequestById[_id].nft).transferFrom(_borrower, address(this), _nftId);
         LENDING_POOL.borrow(_currency, _amount, 2, REF_CODE, msg.sender);
         IERC20(_currency).safeTransfer(_borrower, _amount);
         uint256 scaledPrincipal = borrowRequestById[_id].amount.rayDiv(borrowIndex);
@@ -208,7 +207,9 @@ contract LoanManager {
         emit RequestFulfilled(_id);
     }
 
-    // Repay and liquidate left
+    /**
+     * @dev This function repays any given borrow request for a given amount.
+     */
     function repay(uint256 _id, uint256 _amount) external {
         uint256 debt = getRequestDebtBalance(_id);
         address _currency = borrowRequestById[_id].currency;
