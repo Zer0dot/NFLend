@@ -22,7 +22,6 @@ import { WadRayMath } from './libraries/WadRayMath.sol';
  * @param lender The lender who fulfilled, address(0) if the request is open.
  * @param nft The address of the NFT the borrower is willing to lock.
  * @param nftId The id of the NFT the borrower is willing to lock.
- * @para requestId The borrow request's unique identifier.
  * @param amount The amount the borrower is requesting.
  * @param coupon The yearly amount the borrower must repay in addition to the base rate by endTimeStamp.
  * @param liqThreshold The liquidation threshold after which the collateralized NFT can be claimed.
@@ -30,20 +29,17 @@ import { WadRayMath } from './libraries/WadRayMath.sol';
  * @param endTimestamp The ending timestamp by which the borrower must have fully repaid the loan.
  */
 struct BorrowRequest {
-    //bool open; unnecessary              // Whether the request is open or filled, true if available.
-    address currency;           // The currency the borrower wishes to receive from the loan.
-    // uint256 rateMode;           // The Aave interest 
-    address borrower;           // The initiator of the borrow request.
-    address lender;             // The lender who fulfilled, address(0) if the request is open.
-    address nft;                // The address of the NFT the borrower is willing to lock.
-    uint256 nftId;              // The NFT id the borrower is willing to lock.
-    //uint256 requestId;          // The borrow request's unique identifier.
-    uint256 amount;             // The amount the borrower is requesting.
-    uint256 coupon;             // The yearly amount the borrower must repay in addition to the base rate by endTimeStamp.
-    uint256 liqThreshold;       // The liquidation threshold after which the collateralized NFT can be claimed.
-    uint256 cancelTimestamp;    // The timestamp after which the borrow request cannot be filled.
-    uint256 repayTimestamp;     // The timestamp of the latest repayment
-    uint256 endTimestamp;       // The ending timestamp by which the borrower must have fully repaid the loan.
+    address currency;
+    address borrower;
+    address lender;
+    address nft;
+    uint256 nftId;
+    uint256 amount;
+    uint256 coupon;       
+    uint256 liqThreshold;
+    uint256 cancelTimestamp;
+    uint256 repayTimestamp;
+    uint256 endTimestamp;
 }
 
 contract LoanManager {
