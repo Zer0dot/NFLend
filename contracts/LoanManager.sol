@@ -46,27 +46,6 @@ struct BorrowRequest {
     uint256 endTimestamp;       // The ending timestamp by which the borrower must have fully repaid the loan.
 }
 
-/**
- * The first iteration will adhere to the following structure:
- *      1. Borrowers can create a borrow request
- *      2. Front ends can fetch all borrow requests
- *      3. The full loan is paid back at the end of the term (rate can be computed offchain)
- * This design is simplified on purpose. It is not final.
- * The necessary functions are:
- *      External (non view/pure):
- *          1. Create borrow request
- *          2. Fulfill borrow request
- *          3. Claim uncollateralized NFT
- *          4. Repay borrow request
- *      External (view/pure):
- *          1. Retrieve all open borrow requests
- *          2. (from PUBLIC variable) Retrieve borrow request
- * Currently, for gas efficiency, a reserve is validated by checking that its normalized debt
- * is different than 0. This may not be fool-proof.
- *
- * TODO:
- *      
- */
 contract LoanManager {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
@@ -141,7 +120,7 @@ contract LoanManager {
         uint256 minimumTimestamp = block.timestamp.add(MINIMUM_DURATION);
         uint256 _endTimestamp = block.timestamp.add(duration);
         require(_amount > 0, "LoanManager: Zero amount");
-        require(borrowIndex != 1e27, "LoanManager: Invalid reserve");
+        require(borrowIndex != 0, "LoanManager: Invalid reserve");
         require(_liqThreshold > _amount, "LoanManager: Invalid liquidation threshold");
         require(nftContract.ownerOf(_nftId) == msg.sender, "LoanManager: Not the NFT owner");
         require(nftContract.getApproved(_nftId) == address(this), "LoanManager: Not approved");
@@ -209,19 +188,23 @@ contract LoanManager {
 
     /**
      * @dev This function repays any given borrow request for a given amount.
+     *
+     * @param _id The id of the borrow request to repay.
+     * @param _amount The amount to repay, if it's greater than the whole debt, repay the entire loan.
      */
     function repay(uint256 _id, uint256 _amount) external {
         uint256 debt = getRequestDebtBalance(_id);
         address _currency = borrowRequestById[_id].currency;
         bool full = false;
-        //uint256 repayment = _amount < debt ? _amount : debt;
         uint256 repayment;
+
         if (_amount < debt) {
             repayment = _amount;
         } else {
             repayment = debt;
             full = true;
         }
+
         address _lender = borrowRequestById[_id].lender;
         IERC20(_currency).safeTransferFrom(msg.sender, _lender, repayment);
 
@@ -242,6 +225,12 @@ contract LoanManager {
         }
     }
 
+    /**
+     * @dev This function allows a borrow request lender to liquidate the request as long as
+     * the request is either overdue or undercollateralized.
+     * 
+     * @param _id The id of the borrow request to liquidate.
+     */
     function liquidate(uint256 _id) external {
         address _lender = borrowRequestById[_id].lender;
         address _nft = borrowRequestById[_id].nft;
@@ -260,10 +249,24 @@ contract LoanManager {
         emit RequestLiquidated(_id);
     }
 
+    /** 
+     * @dev This function returns the total request count. Requests are 0-indexed, so
+     * the latest request created is at index getTotalRequestCount()-1.
+     *
+     * @return A uint256 holding the total request count.
+     */
     function getTotalRequestCount() external view returns (uint256) {
         return requestCount.current();
     }
 
+    /**
+     * @dev This function returns the actual debt balance of a given borrow request, taking
+     * into consideration both the accumulated coupon stable and Aave variable debt.
+     *
+     * @param _id The id of the borrow request to query.
+     * 
+     * @return A uint256 holding the total debt associated with a borrow request.
+     */
     function getRequestDebtBalance(uint256 _id) public view returns (uint256) {
         address _currency = borrowRequestById[_id].currency;
         uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
@@ -275,10 +278,12 @@ contract LoanManager {
         return scaledPrincipalById[_id].rayMul(borrowIndex).add(currentCoupon);
     }
 
+    /**
+     * @dev This private function deletes a borrow request, clearing all associated data.
+     * It is only executed either post-liquidation, post-full repayment or after removing
+     * an unfulfilled request. 
+     */
     function closeRequest(uint256 _id) private {
-        address _nft = borrowRequestById[_id].nft;
-        uint256 _nftId = borrowRequestById[_id].nftId;
-        //delete(borrowRequestIdByNft[_nft][_nftId]);
         delete(borrowRequestById[_id]);
         delete(scaledPrincipalById[_id]);
     }
