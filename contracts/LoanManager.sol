@@ -81,8 +81,9 @@ contract LoanManager {
 
     // The below mapping maps NFT addresses and Ids to their associated request Id.
     // The counter starts at 1, so, if the borrowRequestIdByNft is 0, there is no active request.
-    mapping(address => mapping(uint256 => uint256)) public borrowRequestIdByNft;
+    // mapping(address => mapping(uint256 => uint256)) public borrowRequestIdByNft;
     mapping(uint256 => BorrowRequest) public borrowRequestById;
+
     mapping(uint256 => uint256) private scaledPrincipalById;
 
     Counters.Counter requestCount;
@@ -106,7 +107,7 @@ contract LoanManager {
     }
 
     constructor() public {
-        requestCount.increment(); // Sets the counter to 1 by default
+        //requestCount.increment(); // Sets the counter to 1 by default
     }
     /**
      * @dev This function creates a borrow request.
@@ -143,13 +144,13 @@ contract LoanManager {
         require(nftContract.ownerOf(_nftId) == msg.sender, "LoanManager: Not the NFT owner");
         require(nftContract.getApproved(_nftId) == address(this), "LoanManager: Not approved");
         require(_endTimestamp >= minimumTimestamp, "LoanManager: Insufficient duration");
-        require(
-            borrowRequestIdByNft[_nft][_nftId] == 0 ||
-            borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].endTimestamp < block.timestamp ||
-            (borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].cancelTimestamp < block.timestamp &&
-            borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].lender == address(0)),
-            "LoanManager: Request with this NFT exists"
-        );
+        // require(
+        //     borrowRequestIdByNft[_nft][_nftId] == 0 ||
+        //     borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].endTimestamp < block.timestamp ||
+        //     (borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].cancelTimestamp < block.timestamp &&
+        //     borrowRequestById[borrowRequestIdByNft[_nft][_nftId]].lender == address(0)),
+        //     "LoanManager: Request with this NFT exists"
+        // );
 
         BorrowRequest memory request = BorrowRequest({
             //open: true,
@@ -168,7 +169,7 @@ contract LoanManager {
             endTimestamp: _endTimestamp
         });
 
-        borrowRequestIdByNft[_nft][_nftId] = requestCount.current();
+        //borrowRequestIdByNft[_nft][_nftId] = requestCount.current();
         borrowRequestById[requestCount.current()] = request;
         IERC721(_nft).transferFrom(msg.sender, address(this), _nftId);
         //repayTimestamp[requestCount.current()] = block.timestamp;
@@ -276,7 +277,7 @@ contract LoanManager {
     function closeRequest(uint256 _id) private {
         address _nft = borrowRequestById[_id].nft;
         uint256 _nftId = borrowRequestById[_id].nftId;
-        delete(borrowRequestIdByNft[_nft][_nftId]);
+        //delete(borrowRequestIdByNft[_nft][_nftId]);
         delete(borrowRequestById[_id]);
         delete(scaledPrincipalById[_id]);
     }
