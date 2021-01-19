@@ -260,7 +260,7 @@ contract LoanManager {
     }
 
     function getTotalRequestCount() external view returns (uint256) {
-        return requestCount.current().sub(1);
+        return requestCount.current();
     }
 
     function getRequestDebtBalance(uint256 _id) public view returns (uint256) {
