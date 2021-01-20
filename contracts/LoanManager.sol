@@ -10,10 +10,6 @@ import { console } from 'hardhat/console.sol';
 import { ILendingPool } from './interfaces/ILendingPool.sol';
 import { WadRayMath } from './libraries/WadRayMath.sol';
 
-// Notes
-// Add a timestamp after which the borrow request CANNOT BE FILLED
-// Instead of passing a timestamp, pass a duration
-
 /**
  * @dev This struct contains all the necessary data to create a borrow request.
  *
