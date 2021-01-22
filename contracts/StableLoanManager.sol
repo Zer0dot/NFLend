@@ -7,8 +7,8 @@ import { SafeERC20 } from '@openzeppelin/contracts/token/ERC20/SafeERC20.sol';
 import { SafeMath } from '@openzeppelin/contracts/math/SafeMath.sol';
 import { Counters } from '@openzeppelin/contracts/utils/Counters.sol';
 import { console } from 'hardhat/console.sol';
-import { ILendingPool } from './interfaces/ILendingPool.sol';
-import { WadRayMath } from './libraries/WadRayMath.sol';
+// import { ILendingPool } from './interfaces/ILendingPool.sol';
+// import { WadRayMath } from './libraries/WadRayMath.sol';
 
 /**
  * @dev This struct contains all the necessary data to create a borrow request.
@@ -19,7 +19,7 @@ import { WadRayMath } from './libraries/WadRayMath.sol';
  * @param nft The address of the NFT the borrower is willing to lock.
  * @param nftId The id of the NFT the borrower is willing to lock.
  * @param amount The amount the borrower is requesting.
- * @param coupon The yearly amount the borrower must repay in addition to the base rate by endTimeStamp.
+ * @param coupon The yearly amount the borrower must repay
  * @param liqThreshold The liquidation threshold after which the collateralized NFT can be claimed.
  * @param cancelTimestamp The timestamp after which the borrow request cannot be filled.
  * @param endTimestamp The ending timestamp by which the borrower must have fully repaid the loan.
@@ -38,28 +38,23 @@ struct BorrowRequest {
     uint256 endTimestamp;
 }
 
-contract LoanManager {
+contract StableLoanManager {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
-    using WadRayMath for uint256;
+    //using WadRayMath for uint256;
     using SafeERC20 for IERC20;
 
-    // We could potentially have access to all lending pools by using the addresses provider
-    // registry and having the front end pass the appropriate provider ID to this contract which
-    // would then retrieve the lendingPool instance. It might be more efficient, though, to
-    // just deploy one contract per supported market.
-
-    ILendingPool constant LENDING_POOL = ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
+    // ILendingPool constant LENDING_POOL = ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
     uint256 constant MINIMUM_DURATION = 2592000;    // 30 Days 
     uint256 constant ONE_YEAR = 31556952;           // One year (365.2425 days)
-    uint16 constant REF_CODE = 0;                   // Should be team referral code
+    // uint16 constant REF_CODE = 0;                   // Should be team referral code
 
     /**
      * @dev This is a mapping from borrow request ids to borrow request structs.
      */
     mapping(uint256 => BorrowRequest) public borrowRequestById;
 
-    mapping(uint256 => uint256) private scaledPrincipalById;
+    // mapping(uint256 => uint256) private scaledPrincipalById;
 
     Counters.Counter requestCount;
     //BorrowRequest[] private borrowRequests;
@@ -83,7 +78,7 @@ contract LoanManager {
         require(
             borrowRequestById[_id].lender == address(0) &&
             borrowRequestById[_id].repayTimestamp == 0, 
-            "LoanManager: Fulfilled"
+            "StableLoanManager: Fulfilled"
         );
         _;
     }
@@ -112,16 +107,16 @@ contract LoanManager {
     ) 
         external 
     {
-        uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
+        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
         IERC721 nftContract = IERC721(_nft);
         uint256 minimumTimestamp = block.timestamp.add(MINIMUM_DURATION);
         uint256 _endTimestamp = block.timestamp.add(duration);
-        require(_amount > 0, "LoanManager: Zero amount");
-        require(borrowIndex != 0, "LoanManager: Invalid reserve");
-        require(_liqThreshold > _amount, "LoanManager: Invalid liquidation threshold");
-        require(nftContract.ownerOf(_nftId) == msg.sender, "LoanManager: Not the NFT owner");
-        require(nftContract.getApproved(_nftId) == address(this), "LoanManager: Not approved");
-        require(_endTimestamp >= minimumTimestamp, "LoanManager: Insufficient duration");
+        require(_amount > 0, "StableLoanManager: Zero amount");
+        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
+        require(_liqThreshold > _amount, "StableLoanManager: Invalid liquidation threshold");
+        require(nftContract.ownerOf(_nftId) == msg.sender, "StableLoanManager: Not the NFT owner");
+        require(nftContract.getApproved(_nftId) == address(this), "StableLoanManager: Not approved");
+        require(_endTimestamp >= minimumTimestamp, "StableLoanManager: Insufficient duration");
 
         BorrowRequest memory request = BorrowRequest({
             currency: _currency,
@@ -153,7 +148,7 @@ contract LoanManager {
      * @param _id The borrow request id to remove.
      */
     function removeRequest(uint256 _id) external unfulfilled(_id) {
-        require(borrowRequestById[_id].borrower == msg.sender, "LoanManager: Not the borrower");
+        require(borrowRequestById[_id].borrower == msg.sender, "StableLoanManager: Not the borrower");
         IERC721(borrowRequestById[_id].nft).transferFrom(address(this), msg.sender, borrowRequestById[_id].nftId);
         closeRequest(_id);
         console.log("Contract Log: Removal succeeded for request with Id:", _id);
@@ -166,17 +161,17 @@ contract LoanManager {
      * @param _id The id of the borrow request to fulfill.
      */
     function fulfillRequest(uint256 _id) external unfulfilled(_id) {
-        require(borrowRequestById[_id].cancelTimestamp > block.timestamp, "LoanManager: Request expired");
+        require(borrowRequestById[_id].cancelTimestamp > block.timestamp, "StableLoanManager: Request expired");
         address _currency = borrowRequestById[_id].currency;
         address _borrower = borrowRequestById[_id].borrower; 
         uint256 _amount = borrowRequestById[_id].amount;
-        uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
-        require(borrowIndex != 0, "LoanManager: Invalid reserve");
+        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
+        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
 
-        LENDING_POOL.borrow(_currency, _amount, 2, REF_CODE, msg.sender);
-        IERC20(_currency).safeTransfer(_borrower, _amount);
-        uint256 scaledPrincipal = borrowRequestById[_id].amount.rayDiv(borrowIndex);
-        scaledPrincipalById[_id] = scaledPrincipal;
+        // LENDING_POOL.borrow(_currency, _amount, 2, REF_CODE, msg.sender);
+        IERC20(_currency).safeTransferFrom(msg.sender, _borrower, _amount);
+        // uint256 scaledPrincipal = borrowRequestById[_id].amount.rayDiv(borrowIndex);
+        // scaledPrincipalById[_id] = scaledPrincipal;
         borrowRequestById[_id].lender = msg.sender;
         borrowRequestById[_id].repayTimestamp = block.timestamp;
 
@@ -208,10 +203,11 @@ contract LoanManager {
         // Calculate the new scaled debt balance
         if (!full) {
             uint256 debtRemaining = debt.sub(repayment);
-            uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
-            uint256 scaledPrincipal = debtRemaining.rayDiv(borrowIndex);
-            scaledPrincipalById[_id] = scaledPrincipal;
+            // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
+            // uint256 scaledPrincipal = debtRemaining.rayDiv(borrowIndex);
+            // scaledPrincipalById[_id] = scaledPrincipal;
             borrowRequestById[_id].repayTimestamp = block.timestamp;
+            borrowRequestById[_id].amount = debtRemaining;
         } else {
             uint256 _nftId = borrowRequestById[_id].nftId;
             address _borrower = borrowRequestById[_id].borrower;
@@ -234,11 +230,11 @@ contract LoanManager {
         uint256 _nftId = borrowRequestById[_id].nftId;
         uint256 _endTimestamp = borrowRequestById[_id].endTimestamp;
         uint256 _liqThreshold = borrowRequestById[_id].liqThreshold;
-        require(_lender == msg.sender, "LoanManager: Not the lender");
+        require(_lender == msg.sender, "StableLoanManager: Not the lender");
         require(
             _endTimestamp < block.timestamp ||
             getRequestDebtBalance(_id) > _liqThreshold,
-            "LoanManager: Request valid"
+            "StableLoanManager: Request valid"
         );
         IERC721(_nft).transferFrom(address(this), _lender, _nftId);  
         closeRequest(_id);
@@ -265,14 +261,16 @@ contract LoanManager {
      * @return A uint256 holding the total debt associated with a borrow request.
      */
     function getRequestDebtBalance(uint256 _id) public view returns (uint256) {
-        address _currency = borrowRequestById[_id].currency;
-        uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
+        // address _currency = borrowRequestById[_id].currency;
+        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
         uint256 _repayTimestamp = borrowRequestById[_id].repayTimestamp;
-        require(borrowIndex != 0, "LoanManager: Invalid reserve");
-        require(_repayTimestamp > 0, "LoanManager: Unfulfilled");
+        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
+        require(_repayTimestamp > 0, "StableLoanManager: Unfulfilled");
         uint256 _coupon = borrowRequestById[_id].coupon;
         uint256 currentCoupon = _coupon.div(ONE_YEAR).mul(block.timestamp.sub(_repayTimestamp));
-        return scaledPrincipalById[_id].rayMul(borrowIndex).add(currentCoupon);
+        uint256 _amount = borrowRequestById[_id].amount;
+        return _amount.add(currentCoupon);
+        // return scaledPrincipalById[_id].rayMul(borrowIndex).add(currentCoupon);
     }
 
     /**
@@ -282,6 +280,6 @@ contract LoanManager {
      */
     function closeRequest(uint256 _id) private {
         delete(borrowRequestById[_id]);
-        delete(scaledPrincipalById[_id]);
+        // delete(scaledPrincipalById[_id]);
     }
 }

@@ -2,6 +2,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { BigNumber, Contract, ContractFactory, Signer } from "ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address";
+import hre = require("hardhat");
+const alchemyProjectId  = require("../secrets.json");
 
 const AWETH_ADDRESS = "0x030bA81f1c18d280636F32af80b9AAd02Cf0854e";
 const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
@@ -34,18 +36,26 @@ const DEBT_TOKEN_ABI = [
     "function approveDelegation(address delegatee, uint256 amount) external",
     "function balanceOf(address account) public view returns (uint256)"
 ];
+// CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
+// async function resetFork () {
+//     await hre.network.provider.request({
+//         method: "hardhat_reset",
+//         params: [{
+//           forking: {
+//             jsonRpcUrl: `https://eth-mainnet.alchemyapi.io/v2/${alchemyProjectId}`,
+//             blockNumber: 11689738
+//           }
+//         }]
+//     });
+// }
 
-describe("LoanManager persistent instance", function () {
+describe("StableLoanManager persistent instance", function () {
     let accounts: SignerWithAddress[];
-    let LoanManager: ContractFactory;
-    let loanManager: Contract;
+    let StableLoanManager: ContractFactory;
+    let stableLoanManager: Contract;
     let MockNFT: ContractFactory;
     let mockNFT: Contract;
-    let lendingPool: Contract;
-    let debtWETH: Contract;
     let WETH: Contract;
-    let aWETH: Contract;
-    let WETHGateway: Contract;
     let balanceBefore: BigNumber;
     let balanceAfter: BigNumber;
 
@@ -54,17 +64,13 @@ describe("LoanManager persistent instance", function () {
     }
 
     before(async function () {
+        // await resetFork(); // CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
         accounts = await ethers.getSigners();
-        LoanManager = await ethers.getContractFactory("LoanManager");
+        StableLoanManager = await ethers.getContractFactory("StableLoanManager");
         MockNFT = await ethers.getContractFactory("MockNFT");
-        loanManager = await LoanManager.deploy();
+        stableLoanManager = await StableLoanManager.deploy();
         mockNFT = await MockNFT.deploy();
-        lendingPool = new ethers.Contract(LENDINGPOOL_ADDRESS, LENDINGPOOL_ABI, accounts[0]);
         WETH = new ethers.Contract(WETH_ADDRESS, WETH_ABI, accounts[0]);
-        aWETH = new ethers.Contract(AWETH_ADDRESS, ERC20_ABI, accounts[0]);
-        //console.log(await aWETH.balanceOf(accounts[0].address));
-        WETHGateway = new ethers.Contract(WETHGATEWAY_ADDRESS, WETHGATEWAY_ABI, accounts[0]);
-        debtWETH = new ethers.Contract(VARIABLE_DEBT_WETH_ADDRESS, DEBT_TOKEN_ABI, accounts[0]);
     });
 
     beforeEach(async function () {
@@ -82,21 +88,17 @@ describe("LoanManager persistent instance", function () {
         await expect(mockNFT.mint(accounts[0].address, "0")).to.not.be.reverted;
     });
 
-    it("Account 0 should approve the loanManager with nft 0", async function () {
-        await expect(mockNFT.approve(loanManager.address, "0")).to.not.be.reverted;
+    it("Account 0 should approve the stableLoanManager with nft 0", async function () {
+        await expect(mockNFT.approve(stableLoanManager.address, "0")).to.not.be.reverted;
     });
 
-    it("Account 1 should deposit 10 ETH into aWETH", async function () {
-        await expect(WETHGateway.connect(accounts[1]).depositETH(
-            accounts[1].address,
-            "0",
-            { value: ethers.utils.parseEther("10")}
-        )).to.not.be.reverted;
+    it("Account 1 should deposit 10 ETH into WETH", async function () {
+        await expect(WETH.connect(accounts[1]).deposit({ value: ethers.utils.parseEther("10")})).to.not.be.reverted;
     });
 
-    it("Account 1 should have more than 10 aWETH", async function () {
-        await expect(BigNumber.from(await aWETH.balanceOf(accounts[1].address)))
-            .to.be.gt(BigNumber.from(ethers.utils.parseEther("10")));
+    it("Account 1 should have 10 WETH", async function () {
+        await expect(BigNumber.from(await WETH.balanceOf(accounts[1].address)))
+            .to.eq(BigNumber.from(ethers.utils.parseEther("10")));
     });
 
     ///////////////////////////
@@ -104,7 +106,7 @@ describe("LoanManager persistent instance", function () {
     ///////////////////////////
 
     it("Account 0 should create a borrow request ", async function () {
-        console.log("First borrow request creation gas cost:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
+        console.log("First borrow request creation gas cost:", ethers.utils.commify((await stableLoanManager.estimateGas.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -114,7 +116,7 @@ describe("LoanManager persistent instance", function () {
             "999999999999999999999",
             "999999999999999999999"
         )).toString()));
-        await expect(loanManager.createBorrowRequest(
+        await expect(stableLoanManager.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -127,24 +129,24 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Total borrow requests should equal 1", async function () {
-        await expect(await loanManager.getTotalRequestCount()).to.eq(BigNumber.from(1));
+        await expect(await stableLoanManager.getTotalRequestCount()).to.eq(BigNumber.from(1));
     });
 
     it("Account 0 should remove their borrow request", async function () {
-        await expect(loanManager.removeRequest("0")).to.not.be.reverted;
-        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("1"));
+        await expect(stableLoanManager.removeRequest("0")).to.not.be.reverted;
+        //console.log("Should be an empty struct:", await stableLoanManager.borrowRequestById("1"));
     });
 
     ///////////////////////////
     ///      REPAYMENT      ///
     ///////////////////////////
 
-    it("Account 0 should approve the loanManager with nft 0", async function () {
-        await expect(mockNFT.approve(loanManager.address, "0")).to.not.be.reverted;
+    it("Account 0 should approve the stableLoanManager with nft 0", async function () {
+        await expect(mockNFT.approve(stableLoanManager.address, "0")).to.not.be.reverted;
     });
 
     it("Account 0 should create another, identical borrow request", async function () {
-        console.log("Second borrow request creation gas cost:", ethers.utils.commify((await loanManager.estimateGas.createBorrowRequest(
+        console.log("Second borrow request creation gas cost:", ethers.utils.commify((await stableLoanManager.estimateGas.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -154,7 +156,7 @@ describe("LoanManager persistent instance", function () {
             "999999999999999999999",
             "999999999999999999999"
         )).toString()));
-        await expect(loanManager.createBorrowRequest(
+        await expect(stableLoanManager.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -167,7 +169,7 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 0 should NOT be able to create another, identical borrow request", async function () {
-        await expect(loanManager.createBorrowRequest(
+        await expect(stableLoanManager.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
@@ -176,24 +178,23 @@ describe("LoanManager persistent instance", function () {
             ethers.utils.parseEther("1.2"),
             "999999999999999999999",
             "999999999999999999999"
-        )).to.be.revertedWith("LoanManager: Not the NFT owner");
+        )).to.be.revertedWith("StableLoanManager: Not the NFT owner");
     });
 
-    it("Account 1 should delegate variable debt WETH credit to the LoanManager contract", async function () {
-        //await expect(loanManager.connect(accounts[1]).)
-        await expect(debtWETH.connect(accounts[1]).approveDelegation(loanManager.address, MAX_UINT256))
+    it("Account 1 should approve the StableLoanManager with WETH", async function () {
+        await expect(WETH.connect(accounts[1]).approve(stableLoanManager.address, MAX_UINT256))
             .to.not.be.reverted;
     });
 
     it("Account 1 should fulfill the recently created request with id 1", async function () {
         console.log("Fulfill gas cost:", ethers.utils.commify((
-            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("1")
+            await stableLoanManager.connect(accounts[1]).estimateGas.fulfillRequest("1")
         ).toString()));
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("1")).to.not.be.reverted;
+        await expect(stableLoanManager.connect(accounts[1]).fulfillRequest("1")).to.not.be.reverted;
     });
 
     it("Account 1 should not be able to fulfill the request a second time", async function () {
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("1")).to.be.revertedWith("LoanManager: Fulfilled");
+        await expect(stableLoanManager.connect(accounts[1]).fulfillRequest("1")).to.be.revertedWith("StableLoanManager: Fulfilled");
     });
 
     it("Account 0 should have 1 WETH", async function () {
@@ -202,33 +203,33 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Should have accumulating debt", async function () {
-        balanceBefore = await loanManager.getRequestDebtBalance("1");
+        balanceBefore = await stableLoanManager.getRequestDebtBalance("1");
         await sendDummyTx();
-        balanceAfter = await loanManager.getRequestDebtBalance("1");
+        balanceAfter = await stableLoanManager.getRequestDebtBalance("1");
         expect(balanceAfter).to.be.gt(balanceBefore);
     });
 
-    it("Account 0 should approve the LoanManager with WETH", async function () {
-        await expect(WETH.approve(loanManager.address, MAX_UINT256))
+    it("Account 0 should approve the StableLoanManager with WETH", async function () {
+        await expect(WETH.approve(stableLoanManager.address, MAX_UINT256))
             .to.not.be.reverted;
     });
 
     it("Account 1 should not be able to liquidate borrow request with id 1", async function () {
-        await expect(loanManager.connect(accounts[1]).liquidate("1"))
-            .to.be.revertedWith("LoanManager: Request valid");
+        await expect(stableLoanManager.connect(accounts[1]).liquidate("1"))
+            .to.be.revertedWith("StableLoanManager: Request valid");
     });
 
     it("Account 0 should repay borrow request with id 1 for 0.5 WETH", async function () {
-        console.log("Old debt balance:", (await loanManager.getRequestDebtBalance("1")).toString());
-        console.log("Repayment gas:", ethers.utils.commify((await loanManager.estimateGas.repay(
+        console.log("Old debt balance:", (await stableLoanManager.getRequestDebtBalance("1")).toString());
+        console.log("Repayment gas:", ethers.utils.commify((await stableLoanManager.estimateGas.repay(
             "1",
             ethers.utils.parseEther("0.5")
         )).toString()));
-        await expect(loanManager.repay(
+        await expect(stableLoanManager.repay(
             "1",
             ethers.utils.parseEther("0.5")
         )).to.not.be.reverted;
-        console.log("New debt balance:", (await loanManager.getRequestDebtBalance("1")).toString());
+        console.log("New debt balance:", (await stableLoanManager.getRequestDebtBalance("1")).toString());
     });
 
     it("Account 0 should deposit 1 ETH into WETH", async function () {
@@ -236,15 +237,15 @@ describe("LoanManager persistent instance", function () {
     });
 
     it("Account 0 should repay the entirety of borrow request with id 1", async function () {
-        console.log("Full repayment gas:", ethers.utils.commify((await loanManager.estimateGas.repay(
+        console.log("Full repayment gas:", ethers.utils.commify((await stableLoanManager.estimateGas.repay(
             "1",
             MAX_UINT256
         )).toString()));
-        await expect(loanManager.repay(
+        await expect(stableLoanManager.repay(
             "1",
             MAX_UINT256
         )).to.not.be.reverted;
-        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
+        //console.log("Should be an empty struct:", await stableLoanManager.borrowRequestById("2"));
     });
 
     it("Account 1 should have > 1 WETH from the repayment", async function () {
@@ -259,18 +260,18 @@ describe("LoanManager persistent instance", function () {
     ///     LIQUIDATION     ///
     ///////////////////////////
 
-    it("Account 0 should approve the loanManager with nft 0", async function () {
-        await expect(mockNFT.approve(loanManager.address, "0")).to.not.be.reverted;
+    it("Account 0 should approve the stableLoanManager with nft 0", async function () {
+        await expect(mockNFT.approve(stableLoanManager.address, "0")).to.not.be.reverted;
     });
 
     it("Account 0 should create another borrow request with minimal liq. threshold (id 2)", async function () {
-        await expect(loanManager.createBorrowRequest(
+        await expect(stableLoanManager.createBorrowRequest(
             WETH_ADDRESS,
             mockNFT.address,
             "0",
             ethers.utils.parseEther("1"),
-            ethers.utils.parseEther("0.1"),
-            ethers.utils.parseEther("1.00000000001"),
+            ethers.utils.parseEther("10"),
+            ethers.utils.parseEther("1.000000000000000001"),
             "999999999999999999999",
             "999999999999999999999"
         )).to.not.be.reverted;
@@ -278,27 +279,27 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 1 should fulfill the recently created request with id 2", async function () {
         console.log("Fulfill gas cost:", ethers.utils.commify((
-            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("2")
+            await stableLoanManager.connect(accounts[1]).estimateGas.fulfillRequest("2")
         ).toString()));
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("2")).to.not.be.reverted;
+        await expect(stableLoanManager.connect(accounts[1]).fulfillRequest("2")).to.not.be.reverted;
     });
 
     it("Borrow request with id 2 should have higher debt than liq. threshold", async function () {
-        await expect(BigNumber.from((await loanManager.borrowRequestById("2")).liqThreshold))
-            .to.be.lt(await loanManager.getRequestDebtBalance("2"));
-        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
-        console.log("Liq. threshold:", (await loanManager.borrowRequestById("2")).liqThreshold.toString());
-        console.log("Debt balance:", (await loanManager.getRequestDebtBalance("2")).toString());
+        await expect(BigNumber.from((await stableLoanManager.borrowRequestById("2")).liqThreshold))
+            .to.be.lt(await stableLoanManager.getRequestDebtBalance("2"));
+        //console.log("Should be an empty struct:", await stableLoanManager.borrowRequestById("2"));
+        console.log("Liq. threshold:", (await stableLoanManager.borrowRequestById("2")).liqThreshold.toString());
+        console.log("Debt balance:", (await stableLoanManager.getRequestDebtBalance("2")).toString());
     });
 
     it("Account 2 should not be able to liquidate request with id 2", async function () {
-        await expect(loanManager.connect(accounts[2]).liquidate("2"))
-            .to.be.revertedWith("LoanManager: Not the lender");
+        await expect(stableLoanManager.connect(accounts[2]).liquidate("2"))
+            .to.be.revertedWith("StableLoanManager: Not the lender");
     });
 
     it("Account 1 should be able to liquidate request with id 2", async function () {
-        await expect(loanManager.connect(accounts[1]).liquidate("2")).to.not.be.reverted;
-        //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
+        await expect(stableLoanManager.connect(accounts[1]).liquidate("2")).to.not.be.reverted;
+        //console.log("Should be an empty struct:", await stableLoanManager.borrowRequestById("2"));
     });
 
     it("Account 1 should be the owner of NFT with id 0", async function () {

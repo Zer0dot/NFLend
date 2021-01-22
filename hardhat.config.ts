@@ -25,7 +25,7 @@ export default {
     hardhat: {
       forking: {
         url: `https://eth-mainnet.alchemyapi.io/v2/${alchemyProjectId}`,
-        blockNumber: 11449150
+        blockNumber: 11689738
       }
     },
     kovan: {

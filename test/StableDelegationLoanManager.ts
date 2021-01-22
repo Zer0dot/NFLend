@@ -35,6 +35,11 @@ const DEBT_TOKEN_ABI = [
     "function balanceOf(address account) public view returns (uint256)"
 ];
 
+/**
+ * @todo
+ * Test loan expiring by advancing time
+ * Test another currency with stable debt token (should work regardless) 
+ */
 describe("LoanManager persistent instance", function () {
     let accounts: SignerWithAddress[];
     let LoanManager: ContractFactory;
@@ -55,7 +60,7 @@ describe("LoanManager persistent instance", function () {
 
     before(async function () {
         accounts = await ethers.getSigners();
-        LoanManager = await ethers.getContractFactory("LoanManager");
+        LoanManager = await ethers.getContractFactory("StableDelegationLoanManager");
         MockNFT = await ethers.getContractFactory("MockNFT");
         loanManager = await LoanManager.deploy();
         mockNFT = await MockNFT.deploy();
@@ -187,13 +192,13 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 1 should fulfill the recently created request with id 1", async function () {
         console.log("Fulfill gas cost:", ethers.utils.commify((
-            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("1")
+            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("1", "2")
         ).toString()));
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("1")).to.not.be.reverted;
+        await expect(loanManager.connect(accounts[1]).fulfillRequest("1", "2")).to.not.be.reverted;
     });
 
     it("Account 1 should not be able to fulfill the request a second time", async function () {
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("1")).to.be.revertedWith("LoanManager: Fulfilled");
+        await expect(loanManager.connect(accounts[1]).fulfillRequest("1", "2")).to.be.revertedWith("LoanManager: Fulfilled");
     });
 
     it("Account 0 should have 1 WETH", async function () {
@@ -278,9 +283,9 @@ describe("LoanManager persistent instance", function () {
 
     it("Account 1 should fulfill the recently created request with id 2", async function () {
         console.log("Fulfill gas cost:", ethers.utils.commify((
-            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("2")
+            await loanManager.connect(accounts[1]).estimateGas.fulfillRequest("2", "2")
         ).toString()));
-        await expect(loanManager.connect(accounts[1]).fulfillRequest("2")).to.not.be.reverted;
+        await expect(loanManager.connect(accounts[1]).fulfillRequest("2", "2")).to.not.be.reverted;
     });
 
     it("Borrow request with id 2 should have higher debt than liq. threshold", async function () {
