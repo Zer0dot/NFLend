@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, Contract, ContractFactory, Signer } from "ethers";
+import { BigNumber, Contract, ContractFactory } from "ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address";
 import hre = require("hardhat");
 const alchemyProjectId  = require("../secrets.json");
@@ -36,7 +36,7 @@ const DEBT_TOKEN_ABI = [
     "function approveDelegation(address delegatee, uint256 amount) external",
     "function balanceOf(address account) public view returns (uint256)"
 ];
-// CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
+//CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
 // async function resetFork () {
 //     await hre.network.provider.request({
 //         method: "hardhat_reset",
@@ -64,7 +64,7 @@ describe("StableLoanManager persistent instance", function () {
     }
 
     before(async function () {
-        // await resetFork(); // CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
+        //await resetFork(); // CURRENTLY DOESN'T WORK- RUN TESTS INDIVIDUALLY
         accounts = await ethers.getSigners();
         StableLoanManager = await ethers.getContractFactory("StableLoanManager");
         MockNFT = await ethers.getContractFactory("MockNFT");

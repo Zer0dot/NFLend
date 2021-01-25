@@ -41,7 +41,6 @@ struct BorrowRequest {
 contract StableDelegationLoanManager {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
-    //using WadRayMath for uint256;
     using SafeERC20 for IERC20;
 
     ILendingPool constant LENDING_POOL = ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
@@ -54,10 +53,7 @@ contract StableDelegationLoanManager {
      */
     mapping(uint256 => BorrowRequest) public borrowRequestById;
 
-    // mapping(uint256 => uint256) private scaledPrincipalById;
-
     Counters.Counter requestCount;
-    //BorrowRequest[] private borrowRequests;
     
     event RequestCreated(uint256 id);
 
@@ -166,13 +162,9 @@ contract StableDelegationLoanManager {
         address _currency = borrowRequestById[_id].currency;
         address _borrower = borrowRequestById[_id].borrower; 
         uint256 _amount = borrowRequestById[_id].amount;
-        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
-        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
 
         LENDING_POOL.borrow(_currency, _amount, rateMode, REF_CODE, msg.sender);
         IERC20(_currency).safeTransferFrom(address(this), _borrower, _amount);
-        // uint256 scaledPrincipal = borrowRequestById[_id].amount.rayDiv(borrowIndex);
-        // scaledPrincipalById[_id] = scaledPrincipal;
         borrowRequestById[_id].lender = msg.sender;
         borrowRequestById[_id].repayTimestamp = block.timestamp;
 
@@ -201,12 +193,9 @@ contract StableDelegationLoanManager {
         address _lender = borrowRequestById[_id].lender;
         IERC20(_currency).safeTransferFrom(msg.sender, _lender, repayment);
 
-        // Calculate the new scaled debt balance
+        // Calculate the new debt balance, or close the request if repayment was total.
         if (!full) {
             uint256 debtRemaining = debt.sub(repayment);
-            // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
-            // uint256 scaledPrincipal = debtRemaining.rayDiv(borrowIndex);
-            // scaledPrincipalById[_id] = scaledPrincipal;
             borrowRequestById[_id].repayTimestamp = block.timestamp;
             borrowRequestById[_id].amount = debtRemaining;
         } else {
@@ -262,16 +251,12 @@ contract StableDelegationLoanManager {
      * @return A uint256 holding the total debt associated with a borrow request.
      */
     function getRequestDebtBalance(uint256 _id) public view returns (uint256) {
-        // address _currency = borrowRequestById[_id].currency;
-        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
         uint256 _repayTimestamp = borrowRequestById[_id].repayTimestamp;
-        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
         require(_repayTimestamp > 0, "StableLoanManager: Unfulfilled");
         uint256 _coupon = borrowRequestById[_id].coupon;
         uint256 currentCoupon = _coupon.div(ONE_YEAR).mul(block.timestamp.sub(_repayTimestamp));
         uint256 _amount = borrowRequestById[_id].amount;
         return _amount.add(currentCoupon);
-        // return scaledPrincipalById[_id].rayMul(borrowIndex).add(currentCoupon);
     }
 
     /**
@@ -281,6 +266,5 @@ contract StableDelegationLoanManager {
      */
     function closeRequest(uint256 _id) private {
         delete(borrowRequestById[_id]);
-        // delete(scaledPrincipalById[_id]);
     }
 }
