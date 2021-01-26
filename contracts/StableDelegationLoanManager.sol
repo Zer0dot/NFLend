@@ -44,9 +44,12 @@ contract StableDelegationLoanManager {
     using SafeERC20 for IERC20;
 
     ILendingPool constant LENDING_POOL = ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
-    uint256 constant MINIMUM_DURATION = 2592000;    // 30 Days 
-    uint256 constant ONE_YEAR = 31556952;           // One year (365.2425 days)
-    uint16 constant REF_CODE = 0;                   // Should be team referral code
+    uint256 constant MINIMUM_DURATION = 604800;     // (Currently 1 week) Does not affect repayment, just loan duration.
+    uint256 constant ONE_YEAR = 31556952;           // One year (365.2425 days).
+    uint16 constant REF_CODE = 0;                   // Should be the team referral code.
+    uint256 feeBps = 1000;                          // (Currently 10%) The fee levied on coupon payments in bps.
+
+    address public feeTo;
 
     /**
      * @dev This is a mapping from borrow request ids to borrow request structs.
@@ -54,13 +57,31 @@ contract StableDelegationLoanManager {
     mapping(uint256 => BorrowRequest) public borrowRequestById;
 
     Counters.Counter requestCount;
-    
+
+    /**
+     * @dev Emitted when a new borrow request is created.
+     * 
+     * @param id The unique id of the borrow request.
+     */
     event RequestCreated(uint256 id);
 
+    /**
+     * @dev Emitted when a borrow request is fulfilled.
+     *
+     * @param id The unique id of the borrow request.
+     */
     event RequestFulfilled(uint256 id);
 
-    event RequestClosed(uint256 id);
+    /**
+     * @dev Emitted when a borrow request is fully repaid and closed.
+     * 
+     * @param id The unique id of the borrow request.
+     */
+    event RequestFullyRepaid(uint256 id);
 
+    /**
+     * @dev Emitted when a request is liquidated and closed.
+     */
     event RequestLiquidated(uint256 id);
 
     /**
@@ -68,15 +89,24 @@ contract StableDelegationLoanManager {
      * with a given borrow request id. This means the request was never fulfilled.
      * This does NOT check that the borrow request exists.
      *
-     * @param _id The id of the borrow request to verify.
+     * @param id The id of the borrow request to verify.
      */
-    modifier unfulfilled(uint256 _id) {
+    modifier unfulfilled(uint256 id) {
         require(
-            borrowRequestById[_id].lender == address(0) &&
-            borrowRequestById[_id].repayTimestamp == 0, 
+            borrowRequestById[id].lender == address(0) &&
+            borrowRequestById[id].repayTimestamp == 0, 
             "StableLoanManager: Fulfilled"
         );
         _;
+    }
+
+    /**
+     * @dev The constructor just initializes the fee recipient address.
+     *
+     * @param _feeTo The address to initialize the fee recipient to.
+     */
+    constructor(address _feeTo) public {
+        feeTo = _feeTo;
     }
 
     /**
@@ -103,12 +133,10 @@ contract StableDelegationLoanManager {
     ) 
         external 
     {
-        // uint256 borrowIndex = LENDING_POOL.getReserveNormalizedVariableDebt(_currency);
         IERC721 nftContract = IERC721(_nft);
         uint256 minimumTimestamp = block.timestamp.add(MINIMUM_DURATION);
         uint256 _endTimestamp = block.timestamp.add(duration);
         require(_amount > 0, "StableLoanManager: Zero amount");
-        // require(borrowIndex != 0, "StableLoanManager: Invalid reserve");
         require(_liqThreshold > _amount, "StableLoanManager: Invalid liquidation threshold");
         require(nftContract.ownerOf(_nftId) == msg.sender, "StableLoanManager: Not the NFT owner");
         require(nftContract.getApproved(_nftId) == address(this), "StableLoanManager: Not approved");
@@ -141,45 +169,45 @@ contract StableDelegationLoanManager {
      * @dev This function removes a currently active, but unfulfilled request. Msg.sender
      * must be the borrow request creator (borrower).
      *
-     * @param _id The borrow request id to remove.
+     * @param id The borrow request id to remove.
      */
-    function removeRequest(uint256 _id) external unfulfilled(_id) {
-        require(borrowRequestById[_id].borrower == msg.sender, "StableLoanManager: Not the borrower");
-        IERC721(borrowRequestById[_id].nft).transferFrom(address(this), msg.sender, borrowRequestById[_id].nftId);
-        closeRequest(_id);
-        console.log("Contract Log: Removal succeeded for request with Id:", _id);
+    function removeRequest(uint256 id) external unfulfilled(id) {
+        require(borrowRequestById[id].borrower == msg.sender, "StableLoanManager: Not the borrower");
+        IERC721(borrowRequestById[id].nft).transferFrom(address(this), msg.sender, borrowRequestById[id].nftId);
+        closeRequest(id);
+        console.log("Contract Log: Removal succeeded for request with Id:", id);
     }
 
     /**
      * @dev This function fulfills an active, unfulfilled borrow request. msg.sender
      * must have approved the appropriate amount in the right currency.
      * 
-     * @param _id The id of the borrow request to fulfill.
+     * @param id The id of the borrow request to fulfill.
      * @param rateMode the interest rate mode to use when borrowing.
      */
-    function fulfillRequest(uint256 _id, uint256 rateMode) external unfulfilled(_id) {
-        require(borrowRequestById[_id].cancelTimestamp > block.timestamp, "StableLoanManager: Request expired");
-        address _currency = borrowRequestById[_id].currency;
-        address _borrower = borrowRequestById[_id].borrower; 
-        uint256 _amount = borrowRequestById[_id].amount;
+    function fulfillRequest(uint256 id, uint256 rateMode) external unfulfilled(id) {
+        require(borrowRequestById[id].cancelTimestamp > block.timestamp, "StableLoanManager: Request expired");
+        address _currency = borrowRequestById[id].currency;
+        address _borrower = borrowRequestById[id].borrower; 
+        uint256 _amount = borrowRequestById[id].amount;
 
         LENDING_POOL.borrow(_currency, _amount, rateMode, REF_CODE, msg.sender);
         IERC20(_currency).safeTransferFrom(address(this), _borrower, _amount);
-        borrowRequestById[_id].lender = msg.sender;
-        borrowRequestById[_id].repayTimestamp = block.timestamp;
+        borrowRequestById[id].lender = msg.sender;
+        borrowRequestById[id].repayTimestamp = block.timestamp;
 
-        emit RequestFulfilled(_id);
+        emit RequestFulfilled(id);
     }
 
     /**
      * @dev This function repays any given borrow request for a given amount.
      *
-     * @param _id The id of the borrow request to repay.
+     * @param id The id of the borrow request to repay.
      * @param _amount The amount to repay, if it's greater than the whole debt, repay the entire loan.
      */
-    function repay(uint256 _id, uint256 _amount) external {
-        uint256 debt = getRequestDebtBalance(_id);
-        address _currency = borrowRequestById[_id].currency;
+    function repay(uint256 id, uint256 _amount) external {
+        uint256 debt = getRequestDebtBalance(id);
+        address _currency = borrowRequestById[id].currency;
         bool full = false;
         uint256 repayment;
 
@@ -190,21 +218,25 @@ contract StableDelegationLoanManager {
             full = true;
         }
 
-        address _lender = borrowRequestById[_id].lender;
-        IERC20(_currency).safeTransferFrom(msg.sender, _lender, repayment);
+        address _lender = borrowRequestById[id].lender;
+        uint256 accumulatedCoupon = debt.sub(borrowRequestById[id].amount);
+        uint256 feeAmount = accumulatedCoupon.mul(feeBps).div(10000);
+        uint256 lenderAmount = repayment.sub(feeAmount);
+        IERC20(_currency).safeTransferFrom(msg.sender, feeTo, feeAmount);
+        IERC20(_currency).safeTransferFrom(msg.sender, _lender, lenderAmount);
 
         // Calculate the new debt balance, or close the request if repayment was total.
         if (!full) {
             uint256 debtRemaining = debt.sub(repayment);
-            borrowRequestById[_id].repayTimestamp = block.timestamp;
-            borrowRequestById[_id].amount = debtRemaining;
+            borrowRequestById[id].repayTimestamp = block.timestamp;
+            borrowRequestById[id].amount = debtRemaining;
         } else {
-            uint256 _nftId = borrowRequestById[_id].nftId;
-            address _borrower = borrowRequestById[_id].borrower;
-            IERC721(borrowRequestById[_id].nft).transferFrom(address(this), _borrower, _nftId);  
-            closeRequest(_id);
+            uint256 _nftId = borrowRequestById[id].nftId;
+            address _borrower = borrowRequestById[id].borrower;
+            IERC721(borrowRequestById[id].nft).transferFrom(address(this), _borrower, _nftId);  
+            closeRequest(id);
 
-            emit RequestClosed(_id);
+            emit RequestFullyRepaid(id);
         }
     }
 
@@ -212,24 +244,46 @@ contract StableDelegationLoanManager {
      * @dev This function allows a borrow request lender to liquidate the request as long as
      * the request is either overdue or undercollateralized.
      * 
-     * @param _id The id of the borrow request to liquidate.
+     * @param id The id of the borrow request to liquidate.
      */
-    function liquidate(uint256 _id) external {
-        address _lender = borrowRequestById[_id].lender;
-        address _nft = borrowRequestById[_id].nft;
-        uint256 _nftId = borrowRequestById[_id].nftId;
-        uint256 _endTimestamp = borrowRequestById[_id].endTimestamp;
-        uint256 _liqThreshold = borrowRequestById[_id].liqThreshold;
+    function liquidate(uint256 id) external {
+        address _lender = borrowRequestById[id].lender;
+        address _nft = borrowRequestById[id].nft;
+        uint256 _nftId = borrowRequestById[id].nftId;
+        uint256 _endTimestamp = borrowRequestById[id].endTimestamp;
+        uint256 _liqThreshold = borrowRequestById[id].liqThreshold;
         require(_lender == msg.sender, "StableLoanManager: Not the lender");
         require(
             _endTimestamp < block.timestamp ||
-            getRequestDebtBalance(_id) > _liqThreshold,
+            getRequestDebtBalance(id) > _liqThreshold,
             "StableLoanManager: Request valid"
         );
         IERC721(_nft).transferFrom(address(this), _lender, _nftId);  
-        closeRequest(_id);
+        closeRequest(id);
 
-        emit RequestLiquidated(_id);
+        emit RequestLiquidated(id);
+    }
+
+    /** 
+     * @dev This function changes the feeTo address and must be called by the current
+     * feeTo address.
+     *
+     * @param newFeeTo The new address to set as the fee recipient.
+     */
+    function changeFeeTo(address newFeeTo) external {
+        require(msg.sender == feeTo, "LoanManager: Must be feeTo address");
+        feeTo = newFeeTo;
+    }
+
+    /**
+     * @dev This function changes the fee BPS.
+     *
+     * @param newFeeBps the new fee BPS, cannot be greater than 5000 (50%).
+     */
+    function changeFeeBps(uint256 newFeeBps) external {
+        require(msg.sender == feeTo, "LoanManager: Must be feeTo address");
+        require(newFeeBps < 5000, "LoanManager: Fee cannot exceed 50%");
+        feeBps = newFeeBps;
     }
 
     /** 
@@ -246,16 +300,16 @@ contract StableDelegationLoanManager {
      * @dev This function returns the actual debt balance of a given borrow request, taking
      * into consideration both the accumulated coupon stable and Aave variable debt.
      *
-     * @param _id The id of the borrow request to query.
+     * @param id The id of the borrow request to query.
      * 
      * @return A uint256 holding the total debt associated with a borrow request.
      */
-    function getRequestDebtBalance(uint256 _id) public view returns (uint256) {
-        uint256 _repayTimestamp = borrowRequestById[_id].repayTimestamp;
+    function getRequestDebtBalance(uint256 id) public view returns (uint256) {
+        uint256 _repayTimestamp = borrowRequestById[id].repayTimestamp;
         require(_repayTimestamp > 0, "StableLoanManager: Unfulfilled");
-        uint256 _coupon = borrowRequestById[_id].coupon;
+        uint256 _coupon = borrowRequestById[id].coupon;
         uint256 currentCoupon = _coupon.div(ONE_YEAR).mul(block.timestamp.sub(_repayTimestamp));
-        uint256 _amount = borrowRequestById[_id].amount;
+        uint256 _amount = borrowRequestById[id].amount;
         return _amount.add(currentCoupon);
     }
 
@@ -264,7 +318,7 @@ contract StableDelegationLoanManager {
      * It is only executed either post-liquidation, post-full repayment or after removing
      * an unfulfilled request. 
      */
-    function closeRequest(uint256 _id) private {
-        delete(borrowRequestById[_id]);
+    function closeRequest(uint256 id) private {
+        delete(borrowRequestById[id]);
     }
 }

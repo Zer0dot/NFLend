@@ -42,6 +42,7 @@ const DEBT_TOKEN_ABI = [
  */
 describe("LoanManager persistent instance", function () {
     let accounts: SignerWithAddress[];
+    let feeTo: string;
     let LoanManager: ContractFactory;
     let loanManager: Contract;
     let MockNFT: ContractFactory;
@@ -61,8 +62,9 @@ describe("LoanManager persistent instance", function () {
     before(async function () {
         accounts = await ethers.getSigners();
         LoanManager = await ethers.getContractFactory("StableDelegationLoanManager");
+        feeTo = accounts[9].address;
         MockNFT = await ethers.getContractFactory("MockNFT");
-        loanManager = await LoanManager.deploy();
+        loanManager = await LoanManager.deploy(feeTo);
         mockNFT = await MockNFT.deploy();
         lendingPool = new ethers.Contract(LENDINGPOOL_ADDRESS, LENDINGPOOL_ABI, accounts[0]);
         WETH = new ethers.Contract(WETH_ADDRESS, WETH_ABI, accounts[0]);
@@ -82,6 +84,10 @@ describe("LoanManager persistent instance", function () {
     ///////////////////////////
     ///        SETUP        ///
     ///////////////////////////
+
+    it("FeeTo address should have 0 WETH", async function () {
+        await expect(await WETH.balanceOf(feeTo)).to.eq(0);
+    });
 
     it("Account 0 Should mint mock NFT 0 to itself", async function () {
         await expect(mockNFT.mint(accounts[0].address, "0")).to.not.be.reverted;
@@ -252,8 +258,14 @@ describe("LoanManager persistent instance", function () {
         //console.log("Should be an empty struct:", await loanManager.borrowRequestById("2"));
     });
 
+    it("feeTo should have >0 WETH", async function () {
+        await expect(await WETH.balanceOf(feeTo)).to.be.gt(0);
+        console.log((await WETH.balanceOf(feeTo)).toString());
+    });
+
     it("Account 1 should have > 1 WETH from the repayment", async function () {
         await expect(await WETH.balanceOf(accounts[1].address)).to.be.gt(ethers.utils.parseEther("1"));
+        console.log((await WETH.balanceOf(accounts[1].address)).toString());
     });
 
     it("Account 0 should be the owner of NFT with id 0", async function () {
@@ -309,5 +321,4 @@ describe("LoanManager persistent instance", function () {
     it("Account 1 should be the owner of NFT with id 0", async function () {
         await expect(await mockNFT.ownerOf("0")).to.equal(accounts[1].address);
     });
-
 });
