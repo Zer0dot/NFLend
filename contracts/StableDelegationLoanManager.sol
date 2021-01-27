@@ -47,16 +47,15 @@ contract StableDelegationLoanManager {
     uint256 constant MINIMUM_DURATION = 604800;     // (Currently 1 week) Does not affect repayment, just loan duration.
     uint256 constant ONE_YEAR = 31556952;           // One year (365.2425 days).
     uint16 constant REF_CODE = 0;                   // Should be the team referral code.
+    address public feeTo;                           // The fee recipient address.
     uint256 feeBps = 1000;                          // (Currently 10%) The fee levied on coupon payments in bps.
-
-    address public feeTo;
 
     /**
      * @dev This is a mapping from borrow request ids to borrow request structs.
      */
     mapping(uint256 => BorrowRequest) public borrowRequestById;
 
-    Counters.Counter requestCount;
+    Counters.Counter requestCount;                  // Keeps track of the current total requests.
 
     /**
      * @dev Emitted when a new borrow request is created.
