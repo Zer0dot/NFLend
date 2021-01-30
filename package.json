@@ -1,7 +1,7 @@
 {
-  "name": "v2-migrator",
+  "name": "nflend",
   "version": "1.0.0",
-  "description": "Migrator for Aave V1 to Aave V2 positions.",
+  "description": "Lending market for NFTs using Aave credit delegation",
   "main": "index.js",
   "dependencies": {
     "@openzeppelin/contracts": "^3.3.0"

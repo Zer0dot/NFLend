@@ -36,7 +36,13 @@ struct BorrowRequest {
     uint256 repayTimestamp;
     uint256 endTimestamp;
 }
-
+/**
+ * @title Stable Delegation Loan Manager (NFLend)
+ * @author Zer0dot
+ *
+ * @dev This is the principal contract in the NFLend (working name) project. It handles all the logic allowing
+ * NFT owners to request loans backed by their NFTs with given terms. There is 
+ */
 contract StableDelegationLoanManager {
     using Counters for Counters.Counter;
     using SafeMath for uint256;
