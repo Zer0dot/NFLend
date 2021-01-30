@@ -8,7 +8,6 @@ import { SafeMath } from '@openzeppelin/contracts/math/SafeMath.sol';
 import { Counters } from '@openzeppelin/contracts/utils/Counters.sol';
 import { console } from 'hardhat/console.sol';
 import { ILendingPool } from './interfaces/ILendingPool.sol';
-// import { WadRayMath } from './libraries/WadRayMath.sol';
 
 /**
  * @dev This struct contains all the necessary data to create a borrow request.
