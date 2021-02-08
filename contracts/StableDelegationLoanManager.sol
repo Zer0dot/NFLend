@@ -6,7 +6,7 @@ import { IERC20 } from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import { SafeERC20 } from '@openzeppelin/contracts/token/ERC20/SafeERC20.sol'; 
 import { SafeMath } from '@openzeppelin/contracts/math/SafeMath.sol';
 import { Counters } from '@openzeppelin/contracts/utils/Counters.sol';
-import { console } from 'hardhat/console.sol';
+//import { console } from 'hardhat/console.sol';
 import { ILendingPool } from './interfaces/ILendingPool.sol';
 
 /**
@@ -163,10 +163,10 @@ contract StableDelegationLoanManager {
         borrowRequestById[requestCount.current()] = request;
         IERC721(_nft).transferFrom(msg.sender, address(this), _nftId);
 
-        console.log("Contract Log: Request created with Id:", requestCount.current());
-        requestCount.increment();
+        //console.log("Contract Log: Request created with Id:", requestCount.current());
 
         emit RequestCreated(requestCount.current());
+        requestCount.increment();
     }
 
     /**
@@ -179,7 +179,7 @@ contract StableDelegationLoanManager {
         require(borrowRequestById[id].borrower == msg.sender, "StableLoanManager: Not the borrower");
         IERC721(borrowRequestById[id].nft).transferFrom(address(this), msg.sender, borrowRequestById[id].nftId);
         closeRequest(id);
-        console.log("Contract Log: Removal succeeded for request with Id:", id);
+        //console.log("Contract Log: Removal succeeded for request with Id:", id);
     }
 
     /**
@@ -192,11 +192,11 @@ contract StableDelegationLoanManager {
     function fulfillRequest(uint256 id, uint256 rateMode) external unfulfilled(id) {
         require(borrowRequestById[id].cancelTimestamp > block.timestamp, "StableLoanManager: Request expired");
         address _currency = borrowRequestById[id].currency;
-        address _borrower = borrowRequestById[id].borrower; 
+        address _borrower = borrowRequestById[id].borrower;
         uint256 _amount = borrowRequestById[id].amount;
 
         LENDING_POOL.borrow(_currency, _amount, rateMode, REF_CODE, msg.sender);
-        IERC20(_currency).safeTransferFrom(address(this), _borrower, _amount);
+        IERC20(_currency).safeTransfer(_borrower, _amount);
         borrowRequestById[id].lender = msg.sender;
         borrowRequestById[id].repayTimestamp = block.timestamp;
 

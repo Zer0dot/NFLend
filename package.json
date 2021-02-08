@@ -21,7 +21,7 @@
     "typescript": "^4.1.3"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "npx hardhat test test/StableDelegationLoanManager.ts"
   },
   "author": "Zer0dot",
   "license": "AGPL-3.0-only"
